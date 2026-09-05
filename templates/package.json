@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "htmx.org": "^2.0.10",
+    "tailwindcss": "^4.3.3"
+  },
+  "scripts": {
+    "watch:css": "tailwindcss -i ./styles/styles.css -o ./styles/tailwind.css --watch"
+  }
+}

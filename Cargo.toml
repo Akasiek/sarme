@@ -22,3 +22,18 @@ large_enum_variant = "deny"
 
 [dependencies]
 dotenvy = "0.15"
+
+#
+# API
+#
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower-http = { version = "0.7", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+listenfd = "1"
+
+#
+# HTMX and Templating
+#
+askama = "0.16"
