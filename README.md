@@ -24,20 +24,31 @@ Q. writing
 
 #### `.env` file
 
-Create a `.env` file in the project root with the following content:
+Configuration is read from environment variables. For local development, an
+optional `.env` file in the project root is loaded first:
 
 ```env
-DATABASE_URL=./database.db
+LIBRARY_DIR=/absolute/path/to/music
+
+# Optional values and their defaults:
+DATA_DIR=./data
+DATABASE_URL=sqlite://data/sarme.db
+HOST=0.0.0.0
+PORT=8080
+SCAN_INTERVAL_SECONDS=3600
 ```
 
-#### Install dependencies and apply database migrations
+`LIBRARY_DIR` is required and must point to an existing directory using an
+absolute path. `HOST` must be an IP address, `PORT` must fit in the TCP port
+range, and `SCAN_INTERVAL_SECONDS` must be greater than zero. Invalid values
+prevent the application from starting and produce a descriptive error.
+
+#### Install frontend dependencies
 
 ```bash
 # Install JS dependencies
 cd templates && pnpm install && cd ..
 
-# Apply database migrations
-diesel migration run
 ```
 
 ### Running the server
@@ -63,13 +74,3 @@ cd templates && pnpm run watch:css
 ```
 
 Watches `styles/styles.css` and rebuilds `styles/tailwind.css` on every change.
-
-### Database migrations
-
-```bash
-# Apply pending migrations
-diesel migration run
-
-# Revert the last migration
-diesel migration revert
-```
