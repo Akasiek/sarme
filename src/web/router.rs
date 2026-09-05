@@ -5,9 +5,11 @@ use axum::routing::get;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
+use crate::app_state::AppState;
+
 use super::routes::index;
 
-pub fn get_app_router() -> Router {
+pub fn get_app_router(state: AppState) -> Router {
     Router::new()
         .merge(pages_router())
         .layer(
@@ -25,9 +27,10 @@ pub fn get_app_router() -> Router {
                 )
             }),
         )
+        .with_state(state)
 }
 
 /// Routes that render full pages navigated to by the user.
-fn pages_router() -> Router {
+fn pages_router() -> Router<AppState> {
     Router::new().route("/", get(index))
 }
