@@ -1,6 +1,24 @@
 [package]
 name = "sarme"
+description = "A self-hostable lyrics downloader for your music library."
+authors = ["Kamil Pomykała <kamil@kamilpomykala.dev>"]
 version = "0.1.0"
 edition = "2024"
 
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+# PANIC SAFETY
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+unimplemented = "deny"
+unchecked_time_subtraction = "deny"
+todo = "deny"
+string_slice = "deny"
+panic_in_result_fn = "deny"
+panic = "deny"
+# OTHER
+large_enum_variant = "deny"
+
 [dependencies]
+dotenvy = "0.15"
