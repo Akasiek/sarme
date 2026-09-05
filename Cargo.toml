@@ -25,6 +25,11 @@ dotenvy = "0.15"
 thiserror = "2"
 
 #
+# Database
+#
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+
+#
 # Web
 #
 axum = "0.8"
@@ -38,3 +43,6 @@ listenfd = "1"
 # HTMX and Templating
 #
 askama = "0.16"
+
+[dev-dependencies]
+tempfile = "3"

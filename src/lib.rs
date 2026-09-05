@@ -1,5 +1,6 @@
 mod app_state;
 mod config;
+mod database;
 mod web;
 
 use app_state::AppState;
@@ -15,7 +16,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     web::tracer::init();
 
     let config = config::load()?;
-    let state = AppState::new(config);
+    let database = database::connect(&config).await?;
+    let state = AppState::new(config, database);
 
     web::run(state).await?;
 
