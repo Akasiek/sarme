@@ -1,4 +1,4 @@
 #[tokio::main]
-async fn main() {
-    sarme::run().await;
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    sarme::run().await
 }
