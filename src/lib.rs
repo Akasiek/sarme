@@ -1,3 +1,4 @@
+mod config;
 mod web;
 
 /// Loads configuration and runs the application.
@@ -9,6 +10,7 @@ mod web;
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
     web::tracer::init();
+    config::init()?;
 
     web::run().await;
 
