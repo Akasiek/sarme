@@ -3,7 +3,7 @@ macro_rules! render_template {
     ($template:expr) => {{
         match $template.render() {
             Ok(html) => axum::response::Html(html),
-            Err(_) => $crate::web::routes::error::server_error().await,
+            Err(_) => $crate::web::routes::error::server_error(),
         }
     }};
 }

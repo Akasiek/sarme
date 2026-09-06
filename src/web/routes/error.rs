@@ -5,7 +5,7 @@ use axum::response::Html;
 #[template(path = "pages/server_error.html")]
 pub struct ServerErrorTemplate {}
 
-pub async fn server_error() -> Html<String> {
+pub fn server_error() -> Html<String> {
     let template = ServerErrorTemplate {};
 
     match template.render() {
