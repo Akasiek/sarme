@@ -1,6 +1,7 @@
 mod app_state;
 mod config;
 mod database;
+mod scanner;
 mod web;
 
 use app_state::AppState;

@@ -4,7 +4,6 @@ use std::time::Duration;
 
 #[derive(Debug)]
 pub(crate) struct AppConfig {
-    #[expect(dead_code, reason = "used by the upcoming library scanning service")]
     pub(super) library_dir: PathBuf,
     pub(super) data_dir: PathBuf,
     pub(super) database_url: String,
@@ -14,6 +13,10 @@ pub(crate) struct AppConfig {
 }
 
 impl AppConfig {
+    pub(crate) fn library_dir(&self) -> &Path {
+        &self.library_dir
+    }
+
     pub(crate) fn data_dir(&self) -> &Path {
         &self.data_dir
     }

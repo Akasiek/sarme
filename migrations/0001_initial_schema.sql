@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     file_size INTEGER NOT NULL CHECK (file_size >= 0),
     modified_at TEXT NOT NULL,
     content_hash TEXT,
+    missing_since TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -18,6 +19,10 @@ CREATE TABLE IF NOT EXISTS scans (
         CHECK (status IN ('running', 'completed', 'completed_with_errors', 'failed')),
     discovered_tracks INTEGER NOT NULL DEFAULT 0 CHECK (discovered_tracks >= 0),
     processed_tracks INTEGER NOT NULL DEFAULT 0 CHECK (processed_tracks >= 0),
+    new_tracks INTEGER NOT NULL DEFAULT 0 CHECK (new_tracks >= 0),
+    updated_tracks INTEGER NOT NULL DEFAULT 0 CHECK (updated_tracks >= 0),
+    unchanged_tracks INTEGER NOT NULL DEFAULT 0 CHECK (unchanged_tracks >= 0),
+    removed_tracks INTEGER NOT NULL DEFAULT 0 CHECK (removed_tracks >= 0),
     error_count INTEGER NOT NULL DEFAULT 0 CHECK (error_count >= 0),
     error_message TEXT
 );
@@ -63,13 +68,15 @@ CREATE TABLE IF NOT EXISTS lyric_review_candidates (
     provider TEXT NOT NULL,
     provider_id TEXT NOT NULL,
     score INTEGER NOT NULL,
-    synced_lyrics TEXT NOT NULL,
+    synced_lyrics TEXT,
+    plain_lyrics TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- Do not store the same provider result twice for one track.
     UNIQUE (track_id, provider, provider_id),
     -- A candidate cannot be attached to an attempt made for another track.
     FOREIGN KEY (lookup_attempt_id, track_id)
-        REFERENCES lyric_lookup_attempts(id, track_id) ON DELETE CASCADE
+        REFERENCES lyric_lookup_attempts(id, track_id) ON DELETE CASCADE,
+    CHECK (synced_lyrics IS NOT NULL OR plain_lyrics IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS lyric_review_candidates_track_id_idx
@@ -86,6 +93,7 @@ CREATE TABLE IF NOT EXISTS track_lyrics (
             'written',
             'existing'
         )),
-    sidecar_path TEXT,
+    lrc_path TEXT,
+    lyrics_format TEXT CHECK (lyrics_format IN ('synced', 'plain')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

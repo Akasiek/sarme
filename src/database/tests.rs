@@ -59,6 +59,26 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
     .execute(&pool)
     .await?
     .last_insert_rowid();
+    sqlx::query(
+        "INSERT INTO lyric_review_candidates \
+             (track_id, lookup_attempt_id, provider, provider_id, score, plain_lyrics) \
+         VALUES (?, ?, 'lrclib', 'track-plain', 75, ?)",
+    )
+    .bind(track_id)
+    .bind(lookup_attempt_id)
+    .bind("Ordinary lyrics")
+    .execute(&pool)
+    .await?;
+    let empty_candidate = sqlx::query(
+        "INSERT INTO lyric_review_candidates \
+             (track_id, lookup_attempt_id, provider, provider_id, score) \
+         VALUES (?, ?, 'lrclib', 'track-empty', 50)",
+    )
+    .bind(track_id)
+    .bind(lookup_attempt_id)
+    .execute(&pool)
+    .await;
+    assert!(empty_candidate.is_err());
     sqlx::query("INSERT INTO track_lyrics (track_id, status) VALUES (?, 'review')")
         .bind(track_id)
         .execute(&pool)
@@ -102,17 +122,26 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
             .fetch_one(&reopened_pool)
             .await?;
     let track_lyrics = sqlx::query(
-        "SELECT status, sidecar_path FROM track_lyrics \
+        "SELECT status, lrc_path FROM track_lyrics \
              WHERE track_id = ?",
     )
     .bind(track_id)
     .fetch_one(&reopened_pool)
     .await?;
-    let review_candidate =
-        sqlx::query("SELECT id, synced_lyrics FROM lyric_review_candidates WHERE track_id = ?")
-            .bind(track_id)
-            .fetch_one(&reopened_pool)
-            .await?;
+    let review_candidate = sqlx::query(
+        "SELECT id, synced_lyrics, plain_lyrics FROM lyric_review_candidates \
+         WHERE track_id = ? AND provider_id = 'track-1'",
+    )
+    .bind(track_id)
+    .fetch_one(&reopened_pool)
+    .await?;
+    let plain_candidate = sqlx::query(
+        "SELECT synced_lyrics, plain_lyrics FROM lyric_review_candidates \
+         WHERE track_id = ? AND provider_id = 'track-plain'",
+    )
+    .bind(track_id)
+    .fetch_one(&reopened_pool)
+    .await?;
 
     assert_eq!(
         track.try_get::<String, _>("path")?,
@@ -145,8 +174,22 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
         "[00:01.00]Test"
     );
     assert!(
+        review_candidate
+            .try_get::<Option<String>, _>("plain_lyrics")?
+            .is_none()
+    );
+    assert!(
+        plain_candidate
+            .try_get::<Option<String>, _>("synced_lyrics")?
+            .is_none()
+    );
+    assert_eq!(
+        plain_candidate.try_get::<String, _>("plain_lyrics")?,
+        "Ordinary lyrics"
+    );
+    assert!(
         track_lyrics
-            .try_get::<Option<String>, _>("sidecar_path")?
+            .try_get::<Option<String>, _>("lrc_path")?
             .is_none()
     );
 
@@ -154,11 +197,15 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
         .bind(track_id)
         .execute(&reopened_pool)
         .await?;
-    sqlx::query("UPDATE track_lyrics SET status = 'written', sidecar_path = ? WHERE track_id = ?")
-        .bind("Artist/Album/Track.lrc")
-        .bind(track_id)
-        .execute(&reopened_pool)
-        .await?;
+    sqlx::query(
+        "UPDATE track_lyrics \
+         SET status = 'written', lrc_path = ?, lyrics_format = 'synced' \
+         WHERE track_id = ?",
+    )
+    .bind("Artist/Album/Track.lrc")
+    .bind(track_id)
+    .execute(&reopened_pool)
+    .await?;
 
     let retained_candidates: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM lyric_review_candidates WHERE track_id = ?")

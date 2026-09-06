@@ -23,6 +23,8 @@ large_enum_variant = "deny"
 [dependencies]
 dotenvy = "0.15"
 thiserror = "2"
+time = { version = "0.3", features = ["formatting"] }
+walkdir = "2"
 
 #
 # Database
