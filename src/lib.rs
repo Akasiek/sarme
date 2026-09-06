@@ -1,6 +1,7 @@
 mod app_state;
 mod config;
 mod database;
+mod lrclib;
 mod scanner;
 mod web;
 
@@ -18,7 +19,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let config = config::load()?;
     let database = database::connect(&config).await?;
-    let state = AppState::new(config, database);
+    let state = AppState::new(config, database)?;
 
     web::run(state).await?;
 

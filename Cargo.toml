@@ -23,8 +23,8 @@ large_enum_variant = "deny"
 [dependencies]
 dotenvy = "0.15"
 thiserror = "2"
-time = { version = "0.3", features = ["formatting"] }
 walkdir = "2"
+serde = { version = "1", features = ["derive"] }
 
 #
 # Database
@@ -35,7 +35,7 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 # Web
 #
 axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tower-http = { version = "0.7", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -45,6 +45,11 @@ listenfd = "1"
 # HTMX and Templating
 #
 askama = "0.16"
+
+#
+# API
+#
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls"] }
 
 [dev-dependencies]
 tempfile = "3"
