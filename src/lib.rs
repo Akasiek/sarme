@@ -2,6 +2,7 @@ mod app_state;
 mod config;
 mod database;
 mod lrclib;
+mod metadata;
 mod scanner;
 mod web;
 

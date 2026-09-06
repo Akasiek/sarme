@@ -231,3 +231,108 @@ async fn records_a_failed_scan_when_the_library_is_unavailable()
 
     Ok(())
 }
+
+#[tokio::test]
+async fn persists_metadata_without_refreshing_an_unchanged_track()
+-> Result<(), Box<dyn std::error::Error>> {
+    use sqlx::Row;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let library = tempfile::tempdir()?;
+    crate::metadata::fixtures::write(library.path(), "flac")?;
+    let database = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await?;
+    sqlx::migrate!().run(&database).await?;
+    let repository = crate::database::scans::ScanRepository::new(database.clone());
+    let scanner = super::Scanner::new(library.path().to_path_buf(), repository);
+
+    scanner.scan().await?;
+
+    let metadata = sqlx::query("SELECT title, album, duration_ms, file_format FROM track_metadata")
+        .fetch_one(&database)
+        .await?;
+    assert_eq!(metadata.try_get::<String, _>("title")?, "Fixture Song");
+    assert_eq!(metadata.try_get::<String, _>("album")?, "Fixture Album");
+    assert!(metadata.try_get::<i64, _>("duration_ms")? > 0);
+    assert_eq!(metadata.try_get::<String, _>("file_format")?, "flac");
+    let values: Vec<(String, String)> =
+        sqlx::query_as("SELECT field, value FROM track_metadata_values ORDER BY field, position")
+            .fetch_all(&database)
+            .await?;
+    assert!(values.contains(&("artist".to_owned(), "First Artist".to_owned())));
+    assert!(values.contains(&("genre".to_owned(), "Rock".to_owned())));
+
+    sqlx::query("UPDATE track_metadata SET title = 'Do not refresh'")
+        .execute(&database)
+        .await?;
+    let second_scan = scanner.scan().await?;
+    let title: String = sqlx::query_scalar("SELECT title FROM track_metadata")
+        .fetch_one(&database)
+        .await?;
+
+    assert_eq!(second_scan.unchanged_tracks(), 1);
+    assert_eq!(title, "Do not refresh");
+
+    let replacement = tempfile::tempdir()?;
+    let replacement_path = crate::metadata::fixtures::write(replacement.path(), "flac")?;
+    fs::copy(replacement_path, library.path().join("fixture.flac"))?;
+    let changed_scan = scanner.scan().await?;
+    let refreshed = sqlx::query("SELECT title, file_format FROM track_metadata")
+        .fetch_one(&database)
+        .await?;
+
+    assert_eq!(changed_scan.updated_tracks(), 1);
+    assert_eq!(refreshed.try_get::<String, _>("title")?, "Fixture Song");
+    assert_eq!(refreshed.try_get::<String, _>("file_format")?, "flac");
+    Ok(())
+}
+
+#[tokio::test]
+async fn persists_missing_metadata_as_track_issues() -> Result<(), Box<dyn std::error::Error>> {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let library = tempfile::tempdir()?;
+    crate::metadata::fixtures::write(library.path(), "untagged.flac")?;
+    let database = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await?;
+    sqlx::migrate!().run(&database).await?;
+    let repository = crate::database::scans::ScanRepository::new(database.clone());
+    let scanner = super::Scanner::new(library.path().to_path_buf(), repository);
+
+    let summary = scanner.scan().await?;
+    let title: Option<String> = sqlx::query_scalar("SELECT title FROM track_metadata")
+        .fetch_one(&database)
+        .await?;
+    let issue_fields: Vec<String> = sqlx::query_scalar(
+        "SELECT field FROM track_metadata_issues WHERE kind = 'missing' ORDER BY field",
+    )
+    .fetch_all(&database)
+    .await?;
+
+    assert_eq!(summary.errors(), 0);
+    assert!(title.is_none());
+    assert_eq!(issue_fields, vec!["album", "artist", "title"]);
+
+    let replacement = tempfile::tempdir()?;
+    let replacement_path = crate::metadata::fixtures::write(replacement.path(), "flac")?;
+    fs::copy(
+        replacement_path,
+        library.path().join("fixture.untagged.flac"),
+    )?;
+    let changed_scan = scanner.scan().await?;
+    let refreshed_title: String = sqlx::query_scalar("SELECT title FROM track_metadata")
+        .fetch_one(&database)
+        .await?;
+    let remaining_issues: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM track_metadata_issues")
+        .fetch_one(&database)
+        .await?;
+
+    assert_eq!(changed_scan.updated_tracks(), 1);
+    assert_eq!(refreshed_title, "Fixture Song");
+    assert_eq!(remaining_issues, 0);
+    Ok(())
+}

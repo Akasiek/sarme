@@ -7,6 +7,7 @@ use super::file::{DiscoveredFile, Discovery};
 use super::runner::Scanner;
 use super::summary::ScanSummary;
 use crate::database::scans::{ScanProblem, ScanRepository, ScannedTrack, StoredTrack, TrackChange};
+use crate::metadata::{MetadataIssue, MetadataRead};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::error;
@@ -37,7 +38,9 @@ async fn run_scan(
     let root = library_root.to_path_buf();
     let discovery = tokio::task::spawn_blocking(move || discover(&root)).await??;
     let stored_tracks = repository.load_tracks().await?;
-    let prepared = prepare_scan(scan_id, &discovery, stored_tracks);
+    let prepared =
+        tokio::task::spawn_blocking(move || prepare_scan(scan_id, &discovery, stored_tracks))
+            .await?;
 
     repository
         .complete(
@@ -60,7 +63,7 @@ struct PreparedScan {
 
 struct PreparedTrack {
     track: ScannedTrack,
-    problem: Option<ScanProblem>,
+    problems: Vec<ScanProblem>,
 }
 
 fn prepare_scan(
@@ -92,9 +95,7 @@ fn prepare_scan(
                     TrackChange::Unchanged => summary.record_unchanged(),
                 }
 
-                if let Some(problem) = prepared.problem {
-                    problems.push(problem);
-                }
+                problems.extend(prepared.problems);
                 tracks.push(prepared.track);
             }
             Err(problem) => problems.push(problem),
@@ -141,12 +142,28 @@ fn prepare_track(
         path: path.to_owned(),
         message,
     })?;
-    let (lrc_path, problem) = match relative_lrc_path(root, file) {
+    let (lrc_path, lrc_problem) = match relative_lrc_path(root, file) {
         Ok(lrc_path) => (lrc_path, None),
         Err(problem) => (None, Some(problem)),
     };
     let stored = stored_by_path.remove(path);
     let change = classify(stored.as_ref(), file_size, &modified_at);
+    let mut problems = lrc_problem.into_iter().collect::<Vec<_>>();
+    let metadata = if change == TrackChange::Unchanged {
+        None
+    } else {
+        Some(match crate::metadata::read(file.absolute_path()) {
+            Ok(metadata) => MetadataRead::Complete(metadata),
+            Err(error) => {
+                let message = error.to_string();
+                problems.push(ScanProblem {
+                    path: path.to_owned(),
+                    message: message.clone(),
+                });
+                MetadataRead::Failed(MetadataIssue::read_error(message))
+            }
+        })
+    };
 
     Ok(PreparedTrack {
         track: ScannedTrack {
@@ -156,8 +173,9 @@ fn prepare_track(
             modified_at,
             lrc_path,
             change,
+            metadata,
         },
-        problem,
+        problems,
     })
 }
 

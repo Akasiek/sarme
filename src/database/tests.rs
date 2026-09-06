@@ -37,6 +37,21 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
     .bind("metadata read failed")
     .execute(&pool)
     .await?;
+    sqlx::query(
+        "INSERT INTO track_metadata (track_id, title, album, duration_ms, file_format) \
+         VALUES (?, 'Track', 'Album', 180000, 'flac')",
+    )
+    .bind(track_id)
+    .execute(&pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO track_metadata_values (track_id, field, position, value) \
+         VALUES (?, 'artist', 0, 'Artist'), (?, 'genre', 0, 'Rock')",
+    )
+    .bind(track_id)
+    .bind(track_id)
+    .execute(&pool)
+    .await?;
     let lookup_attempt_id = sqlx::query(
         "INSERT INTO lyric_lookup_attempts \
          (track_id, status, query, candidate_count, next_retry_at) \
@@ -128,6 +143,18 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
     .bind(track_id)
     .fetch_one(&reopened_pool)
     .await?;
+    let metadata = sqlx::query(
+        "SELECT title, album, duration_ms, file_format FROM track_metadata WHERE track_id = ?",
+    )
+    .bind(track_id)
+    .fetch_one(&reopened_pool)
+    .await?;
+    let metadata_values: Vec<(String, String)> = sqlx::query_as(
+        "SELECT field, value FROM track_metadata_values WHERE track_id = ? ORDER BY field",
+    )
+    .bind(track_id)
+    .fetch_all(&reopened_pool)
+    .await?;
     let review_candidate = sqlx::query(
         "SELECT id, synced_lyrics, plain_lyrics FROM lyric_review_candidates \
          WHERE track_id = ? AND provider_id = 'track-1'",
@@ -168,6 +195,17 @@ async fn migrations_create_the_persistent_schema() -> Result<(), Box<dyn std::er
         "2024-08-30T14:40:00.000Z"
     );
     assert_eq!(track_lyrics.try_get::<String, _>("status")?, "review");
+    assert_eq!(metadata.try_get::<String, _>("title")?, "Track");
+    assert_eq!(metadata.try_get::<String, _>("album")?, "Album");
+    assert_eq!(metadata.try_get::<i64, _>("duration_ms")?, 180_000);
+    assert_eq!(metadata.try_get::<String, _>("file_format")?, "flac");
+    assert_eq!(
+        metadata_values,
+        vec![
+            ("artist".to_owned(), "Artist".to_owned()),
+            ("genre".to_owned(), "Rock".to_owned()),
+        ]
+    );
     assert_eq!(review_candidate.try_get::<i64, _>("id")?, candidate_id);
     assert_eq!(
         review_candidate.try_get::<String, _>("synced_lyrics")?,

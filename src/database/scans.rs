@@ -1,5 +1,6 @@
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
+use crate::metadata::{MetadataRead, TrackMetadata};
 use crate::scanner::summary::ScanSummary;
 
 #[derive(Debug)]
@@ -26,6 +27,7 @@ pub(crate) struct ScannedTrack {
     pub(crate) modified_at: String,
     pub(crate) lrc_path: Option<String>,
     pub(crate) change: TrackChange,
+    pub(crate) metadata: Option<MetadataRead>,
 }
 
 #[derive(Debug)]
@@ -83,6 +85,9 @@ impl ScanRepository {
         for track in tracks {
             let track_id = apply_track_change(&mut transaction, track).await?;
             sync_lrc_presence(&mut transaction, track_id, track.lrc_path.as_deref()).await?;
+            if let Some(metadata) = &track.metadata {
+                replace_metadata(&mut transaction, track_id, metadata).await?;
+            }
         }
 
         for track_id in missing_track_ids {
@@ -152,6 +157,94 @@ impl ScanRepository {
 
         Ok(())
     }
+}
+
+async fn replace_metadata(
+    transaction: &mut Transaction<'_, Sqlite>,
+    track_id: i64,
+    result: &MetadataRead,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM track_metadata_issues WHERE track_id = ?")
+        .bind(track_id)
+        .execute(&mut **transaction)
+        .await?;
+    sqlx::query("DELETE FROM track_metadata_values WHERE track_id = ?")
+        .bind(track_id)
+        .execute(&mut **transaction)
+        .await?;
+    sqlx::query("DELETE FROM track_metadata WHERE track_id = ?")
+        .bind(track_id)
+        .execute(&mut **transaction)
+        .await?;
+
+    match result {
+        MetadataRead::Complete(metadata) => {
+            insert_metadata(transaction, track_id, metadata).await?;
+        }
+        MetadataRead::Failed(issue) => {
+            insert_metadata_issue(transaction, track_id, issue).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn insert_metadata(
+    transaction: &mut Transaction<'_, Sqlite>,
+    track_id: i64,
+    metadata: &TrackMetadata,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO track_metadata (track_id, title, album, duration_ms, file_format) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(track_id)
+    .bind(&metadata.title)
+    .bind(&metadata.album)
+    .bind(metadata.duration_ms)
+    .bind(metadata.file_format)
+    .execute(&mut **transaction)
+    .await?;
+
+    let mut positions = std::collections::HashMap::new();
+    for value in &metadata.values {
+        let position = positions.entry(value.field.as_str()).or_insert(0_i64);
+        sqlx::query(
+            "INSERT INTO track_metadata_values (track_id, field, position, value) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(track_id)
+        .bind(value.field.as_str())
+        .bind(*position)
+        .bind(&value.value)
+        .execute(&mut **transaction)
+        .await?;
+        *position += 1;
+    }
+
+    for issue in &metadata.issues {
+        insert_metadata_issue(transaction, track_id, issue).await?;
+    }
+
+    Ok(())
+}
+
+async fn insert_metadata_issue(
+    transaction: &mut Transaction<'_, Sqlite>,
+    track_id: i64,
+    issue: &crate::metadata::MetadataIssue,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO track_metadata_issues (track_id, field, kind, message) VALUES (?, ?, ?, ?)",
+    )
+    .bind(track_id)
+    .bind(issue.field)
+    .bind(issue.kind)
+    .bind(&issue.message)
+    .execute(&mut **transaction)
+    .await?;
+
+    Ok(())
 }
 
 async fn apply_track_change(
